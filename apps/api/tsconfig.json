@@ -12,7 +12,6 @@
     "resolveJsonModule": true,
     "declaration": false,
     "sourceMap": true,
-    "types": ["node"],
     "paths": {
       "@option-dashboard/shared": ["../../packages/shared/src"]
     }
