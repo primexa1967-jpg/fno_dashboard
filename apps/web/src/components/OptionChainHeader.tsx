@@ -12,7 +12,7 @@ interface OptionChainHeaderProps {
  */
 export default function OptionChainHeader({ symbol }: OptionChainHeaderProps) {
   // Use WebSocket for real-time IV updates
-  const { ivData: wsIVData, isConnected } = useIVWebSocket(symbol);
+  const { ivData: wsIVData } = useIVWebSocket(symbol);
   
   // Fallback to REST API
   const { data: restIVData, isLoading } = useIVDEX(symbol);

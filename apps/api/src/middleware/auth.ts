@@ -53,6 +53,6 @@ export function authorize(...roles: string[]) {
  * Generate JWT token
  */
 export function generateToken(payload: JWTPayload): string {
-  const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
-  return jwt.sign(payload, JWT_SECRET, { expiresIn });
+  const expiresIn: string = process.env.JWT_EXPIRES_IN || '7d';
+  return jwt.sign(payload, JWT_SECRET, { expiresIn } as jwt.SignOptions);
 }
