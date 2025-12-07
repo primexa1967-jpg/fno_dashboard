@@ -8,11 +8,10 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "moduleResolution": "node",
+    "moduleResolution": "node10",
     "resolveJsonModule": true,
     "declaration": false,
     "sourceMap": true,
-    "typeRoots": ["../../node_modules/@types", "./node_modules/@types"],
     "paths": {
       "@option-dashboard/shared": ["../../packages/shared/src"]
     }
