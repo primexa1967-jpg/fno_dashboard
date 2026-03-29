@@ -1,0 +1,15 @@
+node_modules
+**/node_modules
+.git
+.gitignore
+*.md
+.env
+**/.env
+apps/web/dist
+apps/api/dist
+packages/shared/dist
+dist
+coverage
+.vscode
+.cursor
+**/*.log

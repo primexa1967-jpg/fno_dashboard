@@ -1,0 +1,30 @@
+# Render.com — https://render.com/docs/blueprint-spec
+# Free tier: Web Service sleeps after inactivity; use for testing / low traffic.
+# Set secrets in Render dashboard: DHAN_ACCESS_TOKEN, DHAN_CLIENT_ID, JWT_SECRET, etc.
+
+services:
+  - type: web
+    name: primexa-fno-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    region: singapore
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MOCK_MODE
+        value: "false"
+      - key: PORT
+        value: "4000"
+      - key: CORS_ORIGINS
+        sync: false
+      - key: DHAN_ACCESS_TOKEN
+        sync: false
+      - key: DHAN_CLIENT_ID
+        sync: false
+      - key: DHAN_API_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
