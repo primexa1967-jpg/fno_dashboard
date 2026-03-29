@@ -53,7 +53,7 @@ export default function LoginPage() {
       <Container maxWidth="sm">
         <Paper elevation={6} sx={{ p: 4, borderRadius: 2 }}>
           <Box sx={{ textAlign: 'center', mb: 3 }}>
-            <img src="../../public/logo.png" alt="Logo" style={{ width: 180, marginBottom: 16 }} />
+            <img src="/logo.svg" alt="Logo" style={{ width: 180, marginBottom: 16 }} />
             <Typography variant="h4" fontWeight="bold" color="primary" gutterBottom>
               Option Buyers' Dashboard
             </Typography>
@@ -108,7 +108,7 @@ export default function LoginPage() {
         </Paper>
 
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mt: 2 }}>
-          Default Login: primexa1967@gmail.com / ChangeMe!123
+          ©2026 Primexa. All Rights Reserved.
         </Typography>
       </Container>
     </Box>
