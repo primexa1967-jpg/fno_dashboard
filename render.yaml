@@ -1,7 +1,8 @@
 # Render.com — https://render.com/docs/blueprint-spec
-# Free tier: Web Service sleeps after inactivity; use for testing / low traffic.
+# Free tier: API Web Service sleeps after inactivity; static site is CDN-backed.
 # Set secrets in Render dashboard: DHAN_ACCESS_TOKEN, DHAN_CLIENT_ID, JWT_SECRET, etc.
-
+# After creating the static site, add its URL to API CORS_ORIGINS (e.g. https://primexa-fno-web.onrender.com).
+ 
 services:
   - type: web
     name: primexa-fno-api
@@ -28,3 +29,20 @@ services:
         sync: false
       - key: JWT_SECRET
         sync: false
+ 
+  # Vite SPA — set VITE_API_BASE_URL to your live API (custom domain or *.onrender.com)
+  - type: web
+    name: primexa-fno-web
+    runtime: static
+    plan: free
+    buildCommand: npm ci && npm run build -w @option-dashboard/shared && npm run build -w @option-dashboard/web
+    staticPublishPath: apps/web/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: VITE_API_BASE_URL
+        value: https://primexa-fno-api.onrender.com
