@@ -19,6 +19,7 @@ import { riskEngine } from './riskEngine';
 import { entryEngine, type EntryContext } from './entryEngine';
 import { simulationEngine } from './simulationEngine';
 import { configManager } from './configManager';
+import { evaluateProbabilityGate } from '../probabilityService';
 
 import {
   POSITION, TRADE_ZONE, DECISION, HEALTH_MODE, SYSTEM_STATE,
@@ -95,6 +96,11 @@ export interface MarketDataSnapshot {
   timeStrength: string;
   marketState: string;
   iv: number;
+
+  /** Option premium (LTP) for sizing and simulated entry — index spot stays in spotPrice */
+  optionEntryPrice: number;
+  /** For historical win-rate gate */
+  setupType?: string;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -215,6 +221,31 @@ class PipelineOrchestrator {
         return result;
       }
 
+      // ─── STAGE 4B: PROBABILITY (historical win rate by setup) ────────────
+      const prob = evaluateProbabilityGate(data.symbol, data.setupType);
+      trace.push({
+        stage: 'Probability',
+        status: prob.allowed ? 'PASS' : 'FAIL',
+        detail: prob.reason,
+        timestamp: now,
+      });
+      if (!prob.allowed) {
+        rejections.push({
+          timestamp: now,
+          reason: prob.reason,
+          ruleNumber: 210,
+          module: 'Probability',
+        });
+        simulationEngine.logRejection({
+          timestamp: now,
+          reason: prob.reason,
+          ruleNumber: 210,
+          module: 'Probability',
+        });
+        result.finalDecision = 'NO_TRADE';
+        return result;
+      }
+
       // ─── STAGE 5: TRIGGER ENGINE (timing only; direction from decision) ───
       const triggerCtx: TriggerContext = {
         decision: decision.decision,
@@ -251,7 +282,8 @@ class PipelineOrchestrator {
       }
 
       // ─── STAGE 6: RISK ENGINE ──────────────────────────
-      const slDistance = Math.abs(data.spotPrice - data.stopLoss);
+      const entryPx = data.optionEntryPrice > 0 ? data.optionEntryPrice : data.spotPrice;
+      const slDistance = Math.max(Math.abs(entryPx - data.stopLoss), entryPx * 0.08, 0.05);
       const riskResult = riskEngine.evaluate(
         data.symbol,
         slDistance,
@@ -298,10 +330,10 @@ class PipelineOrchestrator {
       // ─── STAGE 8: EXECUTION (Simulation) ────────────────
       const trade = simulationEngine.createTrade({
         symbol: data.symbol,
-        direction: decision.direction as 'BUY' | 'SELL',
+        direction: (decision.direction as 'BUY' | 'SELL') || 'BUY',
         optionType: data.optionType,
         strike: data.strike,
-        entryPrice: data.spotPrice,
+        entryPrice: entryPx,
         quantity: riskResult.positionSize,
         stopLoss: data.stopLoss,
         target: data.target,
@@ -311,6 +343,7 @@ class PipelineOrchestrator {
         tradeZone: rangeOutput.tradeZone,
         triggerType: trigger.triggerType,
         tradeType: TRADE_CLASSIFICATION.BREAKOUT, // simplified
+        setupType: data.setupType,
         context: {
           vix: data.vix,
           vwap: data.vwap,

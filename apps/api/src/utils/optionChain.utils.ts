@@ -39,10 +39,10 @@ export interface ColorFlags {
 
 /**
  * Calculate Built-up Classification
- * LB (Long Build-up): OI increasing, Price increasing → Green
- * SB (Short Build-up): OI increasing, Price decreasing → Red
- * LU (Long Unwinding): OI decreasing, Price decreasing → Orange
- * SC (Short Covering): OI decreasing, Price increasing → Light Green
+ * LB → Call OI Increase: OI increasing, Price increasing → Green
+ * SB → Put OI Increase: OI increasing, Price decreasing → Red
+ * LU → profit booking: OI decreasing, Price decreasing → Orange
+ * SC → buy back: OI decreasing, Price increasing → Light Green
  */
 export function calculateBuiltUp(
   oiChange: number,

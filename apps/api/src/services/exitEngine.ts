@@ -3,7 +3,7 @@
  *
  * Priority-ordered exit conditions (first match wins).
  * IV / gamma / theta-based exits removed — structure, stop, trail, OI flow, premium weakness only.
- *   1. OI Distribution  – Long Unwinding (compare 3 minutes ago)
+ *   1. OI Distribution  – profit booking (compare 3 minutes ago)
  *   2. Hard Stop         – P&L ≤ -25 %
  *   3. Final Target      – P&L ≥ 100 %
  *   4. Trailing Stop     – P&L ≥ 25 %, price ≤ 88 % of peak
@@ -286,7 +286,7 @@ class ExitEngineService {
             return {
               action: 'EXIT',
               exitType: 'OI_DISTRIBUTION',
-              reason: 'Long Unwinding – CE OI dropping with falling spot (3m comparison)',
+              reason: 'Profit booking – CE OI dropping with falling spot (3m comparison)',
               urgency: 'IMMEDIATE',
               pnlPercent: pnlPct,
               pnlAbsolute: pnlAbs,
@@ -306,7 +306,7 @@ class ExitEngineService {
             return {
               action: 'EXIT',
               exitType: 'OI_DISTRIBUTION',
-              reason: 'Long Unwinding – PE OI dropping with rising spot (3m comparison)',
+              reason: 'Profit booking – PE OI dropping with rising spot (3m comparison)',
               urgency: 'IMMEDIATE',
               pnlPercent: pnlPct,
               pnlAbsolute: pnlAbs,
@@ -510,7 +510,7 @@ class ExitEngineService {
         name: 'OI Structure',
         passed: p.oiStructure === 'LB',
         value: p.oiStructure,
-        required: 'Long Buildup (LB)',
+        required: 'Call OI Increase (LB)',
       });
 
       // ── Volume > 1.3× Avg ──
@@ -591,7 +591,7 @@ class ExitEngineService {
         name: 'OI Structure',
         passed: p.oiStructure === 'SB',
         value: p.oiStructure,
-        required: 'Short Buildup (SB)',
+        required: 'Put OI Increase (SB)',
       });
 
       checks.push({

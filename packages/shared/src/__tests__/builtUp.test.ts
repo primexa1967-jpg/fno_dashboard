@@ -2,24 +2,24 @@ import { describe, it, expect } from 'vitest';
 import { classifyBuiltUp, getBuiltUpStyle } from '../logic/builtUp';
 
 describe('Built-Up Classification', () => {
-  it('should classify Long Built Up (price ↑, OI ↑)', () => {
+  it('should classify Call OI Increase (price ↑, OI ↑)', () => {
     const result = classifyBuiltUp(5, 10);
-    expect(result).toBe('Long Built Up');
+    expect(result).toBe('Call OI Increase');
   });
 
-  it('should classify Short Cover (price ↑, OI ↓)', () => {
+  it('should classify buy back (price ↑, OI ↓)', () => {
     const result = classifyBuiltUp(5, -10);
-    expect(result).toBe('Short Cover');
+    expect(result).toBe('buy back');
   });
 
-  it('should classify Short Built Up (price ↓, OI ↑)', () => {
+  it('should classify Put OI Increase (price ↓, OI ↑)', () => {
     const result = classifyBuiltUp(-5, 10);
-    expect(result).toBe('Short Built Up');
+    expect(result).toBe('Put OI Increase');
   });
 
-  it('should classify Long Unwind (price ↓, OI ↓)', () => {
+  it('should classify profit booking (price ↓, OI ↓)', () => {
     const result = classifyBuiltUp(-5, -10);
-    expect(result).toBe('Long Unwind');
+    expect(result).toBe('profit booking');
   });
 
   it('should return null for insignificant changes with threshold', () => {
@@ -32,30 +32,30 @@ describe('Built-Up Classification', () => {
 
   it('should classify with zero threshold', () => {
     const result = classifyBuiltUp(0.1, 0.1);
-    expect(result).toBe('Long Built Up');
+    expect(result).toBe('Call OI Increase');
   });
 
   it('should handle edge case: zero price change', () => {
     const result = classifyBuiltUp(0, 10);
-    expect(result).toBe('Short Built Up');
+    expect(result).toBe('Put OI Increase');
   });
 
   it('should handle edge case: zero OI change', () => {
     const result = classifyBuiltUp(5, 0);
-    expect(result).toBe('Short Cover');
+    expect(result).toBe('buy back');
   });
 
   it('should provide correct styles for each type', () => {
-    const longBuiltStyle = getBuiltUpStyle('Long Built Up');
-    expect(longBuiltStyle.backgroundColor).toBe('#2e7d32');
-    
-    const shortCoverStyle = getBuiltUpStyle('Short Cover');
-    expect(shortCoverStyle.backgroundColor).toBe('#81c784');
-    
-    const shortBuiltStyle = getBuiltUpStyle('Short Built Up');
-    expect(shortBuiltStyle.backgroundColor).toBe('#c62828');
-    
-    const longUnwindStyle = getBuiltUpStyle('Long Unwind');
-    expect(longUnwindStyle.backgroundColor).toBe('#ef9a9a');
+    const callOiStyle = getBuiltUpStyle('Call OI Increase');
+    expect(callOiStyle.backgroundColor).toBe('#2e7d32');
+
+    const buyBackStyle = getBuiltUpStyle('buy back');
+    expect(buyBackStyle.backgroundColor).toBe('#81c784');
+
+    const putOiStyle = getBuiltUpStyle('Put OI Increase');
+    expect(putOiStyle.backgroundColor).toBe('#c62828');
+
+    const profitStyle = getBuiltUpStyle('profit booking');
+    expect(profitStyle.backgroundColor).toBe('#ef9a9a');
   });
 });

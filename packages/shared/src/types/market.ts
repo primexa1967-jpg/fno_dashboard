@@ -6,7 +6,7 @@ export type OptionType = 'CE' | 'PE';
 /**
  * Built-up classification
  */
-export type BuiltUpType = 'Long Built Up' | 'Short Cover' | 'Long Unwind' | 'Short Built Up';
+export type BuiltUpType = 'Call OI Increase' | 'buy back' | 'profit booking' | 'Put OI Increase';
 
 /**
  * Index/instrument name

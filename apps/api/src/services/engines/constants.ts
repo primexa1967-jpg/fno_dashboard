@@ -486,6 +486,8 @@ export interface TradeObject {
   duration: number;               // ms since entry
   exitReason: ExitReasonType | null;
   context: TradeContext;
+  /** Setup label for historical win-rate gate (BREAKOUT, RETEST, GAMMA, FLOW, MOMENTUM) */
+  setupType?: string;
   /** Optional live hints from market feed (structure, stagnation, etc.) */
   liveExitHints?: {
     structureBroken?: boolean;

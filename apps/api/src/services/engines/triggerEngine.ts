@@ -141,13 +141,13 @@ class TriggerEngine {
 
   /** §50-51: Gamma Break */
   private evaluateGammaBreak(ctx: TriggerContext): TriggerOutput {
-    // §50: Price breaks gamma wall with volume spike → IMMEDIATE TRIGGER
+    // §50: Price breaks high OI zone with volume spike → IMMEDIATE TRIGGER
     if (ctx.gammaWallBroken && ctx.volumeSurge) {
       return {
         triggered: true,
         triggerType: TRIGGER_TYPE.GAMMA_BREAK,
         priority: 1,
-        details: `Gamma wall broken at ${ctx.gammaWall} with volume surge`,
+        details: `High OI zone broken at ${ctx.gammaWall} with volume surge`,
       };
     }
     // §51: Gamma flip detected → REVERSAL ENTRY

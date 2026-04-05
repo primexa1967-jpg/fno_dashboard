@@ -18,6 +18,7 @@ import {
 } from './constants';
 import { configManager } from './configManager';
 import { riskEngine } from './riskEngine';
+import { persistEngineSnapshot } from '../enginePersistence';
 
 function sha256Hex(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
@@ -28,6 +29,13 @@ function sha256Hex(value: string): string {
 // ─────────────────────────────────────────────────────────────
 
 class SimulationEngine {
+  private queuePersist(): void {
+    persistEngineSnapshot({
+      simulation: this.exportSnapshotForPersistence(),
+      risk: riskEngine.exportStateSnapshot(),
+    });
+  }
+
   private openTrades: Map<string, TradeObject> = new Map();
   private closedTrades: TradeObject[] = [];
   private rejections: RejectionEntry[] = [];
@@ -87,6 +95,7 @@ class SimulationEngine {
     triggerType: TriggerTypeValue;
     tradeType: TradeClassificationType;
     context: TradeContext;
+    setupType?: string;
   }): TradeObject | null {
     this.tradeCounter++;
     const tradeId = `SIM-${Date.now()}-${this.tradeCounter}`;
@@ -125,6 +134,7 @@ class SimulationEngine {
       duration: 0,
       exitReason: null,
       context: params.context,
+      setupType: params.setupType,
     };
 
     // §238: Deduct margin
@@ -133,6 +143,7 @@ class SimulationEngine {
 
     this.openTrades.set(tradeId, trade);
     console.log(`📊 SIM: Trade opened ${tradeId} ${params.direction} ${params.symbol} ${params.strike}${params.optionType} @ ${adjustedEntry}`);
+    this.queuePersist();
 
     return trade;
   }
@@ -225,6 +236,7 @@ class SimulationEngine {
     this.closedTrades.push(trade);
 
     console.log(`📊 SIM: Trade closed ${tradeId} PnL=${trade.realizedPnl} Reason=${exitReason}`);
+    this.queuePersist();
     return trade;
   }
 
@@ -329,6 +341,7 @@ class SimulationEngine {
   logRejection(entry: RejectionEntry): void {
     this.rejections.push(entry);
     if (this.rejections.length > 500) this.rejections.shift();
+    this.queuePersist();
   }
 
   getRecentRejections(count: number = 10): RejectionEntry[] {
@@ -383,7 +396,7 @@ class SimulationEngine {
   }
 
   getAccount(): SimulationAccount {
-    return riskEngine.getAccount();
+    return { ...riskEngine.getAccount(), mode: this.mode };
   }
 
   // ─── RESET ────────────────────────────────────────────────
@@ -395,6 +408,51 @@ class SimulationEngine {
     this.tradeCounter = 0;
     riskEngine.reset();
     console.log('📊 SIM: Reset complete');
+    this.queuePersist();
+  }
+
+  /** Restore open/closed trades after server restart (risk state loaded separately) */
+  hydrateFromSnapshot(data: {
+    openTrades: TradeObject[];
+    closedTrades: TradeObject[];
+    rejections: RejectionEntry[];
+    tradeCounter: number;
+    mode?: SimModeType;
+  } | null): void {
+    if (!data) return;
+    this.openTrades.clear();
+    for (const t of data.openTrades || []) {
+      if (t?.tradeId) this.openTrades.set(t.tradeId, t);
+    }
+    this.closedTrades = Array.isArray(data.closedTrades) ? [...data.closedTrades] : [];
+    this.rejections = Array.isArray(data.rejections) ? [...data.rejections] : [];
+    if (typeof data.tradeCounter === 'number' && data.tradeCounter >= 0) {
+      this.tradeCounter = data.tradeCounter;
+    }
+    if (data.mode === SIM_MODE.SIMULATION || data.mode === SIM_MODE.LIVE) {
+      this.mode = data.mode;
+    }
+  }
+
+  /** Call after batch mark-to-market so LTP changes survive restarts */
+  flushStateToDisk(): void {
+    this.queuePersist();
+  }
+
+  exportSnapshotForPersistence(): {
+    openTrades: TradeObject[];
+    closedTrades: TradeObject[];
+    rejections: RejectionEntry[];
+    tradeCounter: number;
+    mode: SimModeType;
+  } {
+    return {
+      openTrades: Array.from(this.openTrades.values()),
+      closedTrades: [...this.closedTrades],
+      rejections: [...this.rejections],
+      tradeCounter: this.tradeCounter,
+      mode: this.mode,
+    };
   }
 }
 

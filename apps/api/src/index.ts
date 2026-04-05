@@ -42,6 +42,8 @@ import { marketStateStore } from './services/marketStateStore';
 
 // Import database initialization
 import { initializeDatabase } from './db/init';
+import { hydrateEnginesFromDisk } from './services/enginePersistence';
+import { startPipelineRunner, stopPipelineRunner } from './services/pipelineRunner';
 
 let snapshotJobInterval: NodeJS.Timeout | null = null;
 
@@ -86,8 +88,9 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 });
 
-// Initialize database
+// Initialize database + restore paper-trading snapshot
 initializeDatabase()
+  .then(() => hydrateEnginesFromDisk())
   .then(() => {
     console.log('Database initialized successfully');
   })
@@ -136,7 +139,9 @@ server.listen(PORT, () => {
     marketStateStore.start();
     console.log(`🏪 MarketStateStore background refresh started (delayed 15s)`);
   }, 15000);
-  
+
+  startPipelineRunner();
+
   // Don't start polling automatically - let clients trigger it
   // This avoids unnecessary API calls and potential crashes
 });
@@ -144,6 +149,7 @@ server.listen(PORT, () => {
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('SIGTERM signal received: closing HTTP server');
+  stopPipelineRunner();
   if (snapshotJobInterval) {
     clearInterval(snapshotJobInterval);
     console.log('Snapshot job stopped');

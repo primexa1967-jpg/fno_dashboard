@@ -253,13 +253,13 @@ function step6_OISpurt(raw: StockSnapshot): { spurt: boolean; oiSpurtPct: number
   const oiUp = raw.currentOI > raw.previousOI;
 
   let interp = 'Neutral';
-  if (priceUp && oiUp) interp = 'Long Build-up';
-  else if (!priceUp && oiUp) interp = 'Short Build-up';
-  else if (priceUp && !oiUp) interp = 'Short Covering';
-  else if (!priceUp && !oiUp) interp = 'Long Unwinding';
+  if (priceUp && oiUp) interp = 'Call OI Increase';
+  else if (!priceUp && oiUp) interp = 'Put OI Increase';
+  else if (priceUp && !oiUp) interp = 'buy back';
+  else if (!priceUp && !oiUp) interp = 'profit booking';
 
-  const status: EngineOutput['status'] = (interp === 'Long Build-up' || interp === 'Short Covering') ? 'BULLISH'
-    : (interp === 'Short Build-up' || interp === 'Long Unwinding') ? 'BEARISH' : 'NEUTRAL';
+  const status: EngineOutput['status'] = (interp === 'Call OI Increase' || interp === 'buy back') ? 'BULLISH'
+    : (interp === 'Put OI Increase' || interp === 'profit booking') ? 'BEARISH' : 'NEUTRAL';
 
   return {
     spurt, oiSpurtPct, oiInterp: interp,
@@ -490,10 +490,10 @@ function step19_Risk(entry: number, atr: number, isBuy: boolean): { stopLoss: nu
 function step20_Signal(trend: string, pxChg: number, oiInterp: string, imbalance: number, score: number):
   'BUY' | 'SELL' | 'WATCH' | 'NEUTRAL' | 'IGNORE' {
   if (trend === 'Bullish' && pxChg > 0.6
-    && (oiInterp === 'Long Build-up' || oiInterp === 'Short Covering')
+    && (oiInterp === 'Call OI Increase' || oiInterp === 'buy back')
     && imbalance > 1.5 && score > 60) return 'BUY';
   if (trend === 'Bearish' && pxChg < -0.6
-    && (oiInterp === 'Short Build-up' || oiInterp === 'Long Unwinding')
+    && (oiInterp === 'Put OI Increase' || oiInterp === 'profit booking')
     && imbalance < 0.7 && score > 60) return 'SELL';
   if (score >= 55) return 'WATCH';
   if (score >= 40) return 'NEUTRAL';

@@ -54,13 +54,17 @@ const WEIGHTS = {
 
 // Built-up pattern scores
 const BUILDUP_SCORES: Record<string, { ce: number; pe: number }> = {
-  'Long Build Up': { ce: 10, pe: -5 },      // Bullish for CE
-  'Short Covering': { ce: 5, pe: -3 },      // Mildly bullish
-  'Short Cover': { ce: 5, pe: -3 },         // Mildly bullish
-  'Long Unwinding': { ce: -5, pe: 3 },      // Mildly bearish
-  'Long Unwind': { ce: -5, pe: 3 },         // Mildly bearish
-  'Short Build Up': { ce: -10, pe: 5 },     // Bearish for CE
-  'Short Built Up': { ce: -10, pe: 5 },     // Bearish for CE
+  'Call OI Increase': { ce: 10, pe: -5 },
+  'buy back': { ce: 5, pe: -3 },
+  'Put OI Increase': { ce: -10, pe: 5 },
+  'profit booking': { ce: -5, pe: 3 },
+  'Long Build Up': { ce: 10, pe: -5 },
+  'Short Covering': { ce: 5, pe: -3 },
+  'Short Cover': { ce: 5, pe: -3 },
+  'Long Unwinding': { ce: -5, pe: 3 },
+  'Long Unwind': { ce: -5, pe: 3 },
+  'Short Build Up': { ce: -10, pe: 5 },
+  'Short Built Up': { ce: -10, pe: 5 },
 };
 
 class VolatilityBarService {

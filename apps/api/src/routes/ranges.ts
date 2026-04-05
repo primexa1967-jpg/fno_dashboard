@@ -4,6 +4,7 @@
 
 import { Router, Request, Response } from 'express';
 import { marketRangeService } from '../services/marketRangeService';
+import { buildDecisionsBundle } from '../services/rangeDecisionAnalysis';
 
 const router = Router();
 
@@ -16,10 +17,14 @@ router.get('/all', async (req: Request, res: Response) => {
     console.log(`📊 Fetching range data for all indices`);
 
     const rangeData = await marketRangeService.getAllIndicesRangeData();
+    const decisions = buildDecisionsBundle(rangeData);
 
     res.json({
       success: true,
-      data: rangeData,
+      data: {
+        ...rangeData,
+        decisions,
+      },
     });
   } catch (error) {
     console.error('Error fetching all indices range data:', error);

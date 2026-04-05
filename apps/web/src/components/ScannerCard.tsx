@@ -115,7 +115,7 @@ interface ScanStep {
   weight: number;
 }
 
-interface ScanResult {
+export interface ScanResult {
   symbol: string;
   signal: 'BUY CE' | 'BUY PE' | 'NO TRADE';
   score: number;
@@ -154,7 +154,14 @@ const REGIME_COLORS: Record<string, string> = {
 
 // ── Component ───────────────────────────────────────────────
 
-export default function ScannerCard({ symbol }: { symbol: string }) {
+export default function ScannerCard({
+  symbol,
+  onScanLoaded,
+}: {
+  symbol: string;
+  /** Optional: parent can show a compact summary without a second /scanner fetch */
+  onScanLoaded?: (data: ScanResult) => void;
+}) {
   const [data, setData] = useState<ScanResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -180,6 +187,10 @@ export default function ScannerCard({ symbol }: { symbol: string }) {
     const id = setInterval(fetchData, 60000);
     return () => clearInterval(id);
   }, [symbol]);
+
+  useEffect(() => {
+    if (data && onScanLoaded) onScanLoaded(data);
+  }, [data, onScanLoaded]);
 
   if (loading && !data) {
     return (

@@ -5,7 +5,7 @@
  * Mounted at /engine/* in index.ts
  */
 
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import {
   computeRange, computeGlobal, classifyPosition, calculateOverlap,
   healthEngine, decisionEngine, triggerEngine, riskEngine, entryEngine,
@@ -14,8 +14,29 @@ import {
   type RangeEngineInput, type ScannerSignal, type TriggerContext, type EntryContext,
 } from '../services/engines';
 import { marketRangeService } from '../services/marketRangeService';
+import { authenticate, authorize, AuthRequest } from '../middleware/auth';
+import { readEngineAuditLines } from '../services/engineAudit';
+import { runPipelineCycleOnce } from '../services/pipelineRunner';
 
 const router = Router();
+
+router.use(authenticate);
+
+/** Simulation read APIs: admins always; others need server PIN unlock */
+function requireSimRead(req: AuthRequest, res: Response, next: NextFunction): void {
+  if (req.user?.role === 'superadmin' || req.user?.role === 'admin') {
+    next();
+    return;
+  }
+  if (simulationEngine.isUnlocked()) {
+    next();
+    return;
+  }
+  res.status(403).json({
+    success: false,
+    error: 'Unlock simulation with PIN (Engine page) or sign in as admin',
+  });
+}
 
 // ─────────────────────────────────────────────────────────────
 //  RANGE ENGINE (§53-55)
@@ -170,7 +191,7 @@ router.get('/health/rejections', (req: Request, res: Response) => {
  * POST /engine/health/override
  * Set health override for testing (§172)
  */
-router.post('/health/override', (req: Request, res: Response) => {
+router.post('/health/override', authorize('superadmin', 'admin'), (req: Request, res: Response) => {
   try {
     const { enabled, mode } = req.body;
     healthEngine.setOverride(!!enabled, mode);
@@ -247,11 +268,8 @@ router.post('/simulation/lock', (req: Request, res: Response) => {
  * GET /engine/simulation/account
  * Get simulation account summary (§264)
  */
-router.get('/simulation/account', (req: Request, res: Response) => {
+router.get('/simulation/account', requireSimRead, (req: Request, res: Response) => {
   try {
-    if (!simulationEngine.isUnlocked()) {
-      return res.json({ success: false, error: 'Panel locked — enter PIN' });
-    }
     const account = simulationEngine.getAccount();
     res.json({ success: true, data: account });
   } catch (error) {
@@ -263,11 +281,8 @@ router.get('/simulation/account', (req: Request, res: Response) => {
  * GET /engine/simulation/trades/open
  * Get open trades (§265)
  */
-router.get('/simulation/trades/open', (req: Request, res: Response) => {
+router.get('/simulation/trades/open', requireSimRead, (req: Request, res: Response) => {
   try {
-    if (!simulationEngine.isUnlocked()) {
-      return res.json({ success: false, error: 'Panel locked' });
-    }
     const trades = simulationEngine.getOpenTrades();
     res.json({ success: true, data: trades });
   } catch (error) {
@@ -279,11 +294,8 @@ router.get('/simulation/trades/open', (req: Request, res: Response) => {
  * GET /engine/simulation/trades/history
  * Get closed trades history (§266-267)
  */
-router.get('/simulation/trades/history', (req: Request, res: Response) => {
+router.get('/simulation/trades/history', requireSimRead, (req: Request, res: Response) => {
   try {
-    if (!simulationEngine.isUnlocked()) {
-      return res.json({ success: false, error: 'Panel locked' });
-    }
     const limit = parseInt(req.query.limit as string) || 50;
     const trades = simulationEngine.getClosedTrades(limit);
     res.json({ success: true, data: trades });
@@ -296,11 +308,8 @@ router.get('/simulation/trades/history', (req: Request, res: Response) => {
  * GET /engine/simulation/trades/:tradeId
  * Get specific trade detail (§277)
  */
-router.get('/simulation/trades/:tradeId', (req: Request, res: Response) => {
+router.get('/simulation/trades/:tradeId', requireSimRead, (req: Request, res: Response) => {
   try {
-    if (!simulationEngine.isUnlocked()) {
-      return res.json({ success: false, error: 'Panel locked' });
-    }
     const trade = simulationEngine.getTrade(req.params.tradeId);
     res.json({ success: true, data: trade });
   } catch (error) {
@@ -312,11 +321,8 @@ router.get('/simulation/trades/:tradeId', (req: Request, res: Response) => {
  * GET /engine/simulation/rejections
  * Get recent rejection log (§268-269)
  */
-router.get('/simulation/rejections', (req: Request, res: Response) => {
+router.get('/simulation/rejections', requireSimRead, (req: Request, res: Response) => {
   try {
-    if (!simulationEngine.isUnlocked()) {
-      return res.json({ success: false, error: 'Panel locked' });
-    }
     const count = parseInt(req.query.count as string) || 10;
     const rejections = simulationEngine.getRecentRejections(count);
     res.json({ success: true, data: rejections });
@@ -329,11 +335,8 @@ router.get('/simulation/rejections', (req: Request, res: Response) => {
  * GET /engine/simulation/performance
  * Get performance metrics (§270)
  */
-router.get('/simulation/performance', (req: Request, res: Response) => {
+router.get('/simulation/performance', requireSimRead, (req: Request, res: Response) => {
   try {
-    if (!simulationEngine.isUnlocked()) {
-      return res.json({ success: false, error: 'Panel locked' });
-    }
     const metrics = simulationEngine.getPerformance();
     res.json({ success: true, data: metrics });
   } catch (error) {
@@ -345,11 +348,8 @@ router.get('/simulation/performance', (req: Request, res: Response) => {
  * POST /engine/simulation/reset
  * Reset simulation (clears all trades and capital)
  */
-router.post('/simulation/reset', (req: Request, res: Response) => {
+router.post('/simulation/reset', authorize('superadmin', 'admin'), (req: Request, res: Response) => {
   try {
-    if (!simulationEngine.isUnlocked()) {
-      return res.json({ success: false, error: 'Panel locked' });
-    }
     simulationEngine.reset();
     res.json({ success: true, message: 'Simulation reset' });
   } catch (error) {
@@ -361,7 +361,7 @@ router.post('/simulation/reset', (req: Request, res: Response) => {
  * POST /engine/simulation/mode
  * Toggle simulation mode (§271-272)
  */
-router.post('/simulation/mode', (req: Request, res: Response) => {
+router.post('/simulation/mode', authorize('superadmin', 'admin'), (req: Request, res: Response) => {
   try {
     const { mode } = req.body;
     if (mode === 'SIMULATION' || mode === 'LIVE') {
@@ -393,10 +393,22 @@ router.get('/config', (req: Request, res: Response) => {
 });
 
 /**
+ * POST /engine/config/reset — must be registered before /config/:section
+ */
+router.post('/config/reset', authorize('superadmin', 'admin'), (req: Request, res: Response) => {
+  try {
+    configManager.reset();
+    res.json({ success: true, message: 'Config reset to defaults' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Config reset failed' });
+  }
+});
+
+/**
  * POST /engine/config/:section
  * Update a config section dynamically
  */
-router.post('/config/:section', (req: Request, res: Response) => {
+router.post('/config/:section', authorize('superadmin', 'admin'), (req: Request, res: Response) => {
   try {
     const section = req.params.section as any;
     const updates = req.body;
@@ -404,19 +416,6 @@ router.post('/config/:section', (req: Request, res: Response) => {
     res.json({ success: true, message: `Config section '${section}' updated` });
   } catch (error) {
     res.status(500).json({ success: false, error: 'Config update failed' });
-  }
-});
-
-/**
- * POST /engine/config/reset
- * Reset config to defaults
- */
-router.post('/config/reset', (req: Request, res: Response) => {
-  try {
-    configManager.reset();
-    res.json({ success: true, message: 'Config reset to defaults' });
-  } catch (error) {
-    res.status(500).json({ success: false, error: 'Config reset failed' });
   }
 });
 
@@ -441,12 +440,37 @@ router.get('/risk/state', (req: Request, res: Response) => {
  * POST /engine/risk/reset-daily
  * Reset daily risk counters
  */
-router.post('/risk/reset-daily', (req: Request, res: Response) => {
+router.post('/risk/reset-daily', authorize('superadmin', 'admin'), (req: Request, res: Response) => {
   try {
     riskEngine.resetDaily();
     res.json({ success: true, message: 'Daily risk counters reset' });
   } catch (error) {
     res.status(500).json({ success: false, error: 'Reset failed' });
+  }
+});
+
+/**
+ * GET /engine/audit — recent pipeline / engine audit lines (admin)
+ */
+router.get('/audit', authorize('superadmin', 'admin'), async (req: Request, res: Response) => {
+  try {
+    const max = Math.min(parseInt(req.query.max as string) || 200, 1000);
+    const lines = await readEngineAuditLines(max);
+    res.json({ success: true, data: lines });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to read audit log' });
+  }
+});
+
+/**
+ * POST /engine/pipeline/run-once — manual pipeline tick (admin)
+ */
+router.post('/pipeline/run-once', authorize('superadmin', 'admin'), async (_req: Request, res: Response) => {
+  try {
+    await runPipelineCycleOnce();
+    res.json({ success: true, message: 'Pipeline cycle completed' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Pipeline run failed' });
   }
 });
 

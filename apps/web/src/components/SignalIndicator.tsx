@@ -52,12 +52,46 @@ interface SignalIndicators {
   timestamp: string;
 }
 
+type ConfidenceDirection = 'Bullish' | 'Bearish' | 'Neutral';
+
+interface ConfidenceEngineOutput {
+  pipelineOrder: string;
+  rangeState: string;
+  rangeReliability: string;
+  overlapPercent: number;
+  componentScores: {
+    structure: number;
+    oiFlow: number;
+    gamma: number;
+    momentum: number;
+    alignment: number;
+  };
+  weightsUsed: Record<string, number>;
+  confidenceRaw: number;
+  confidenceBeforeDeepRange?: number;
+  confidenceAdjusted: number;
+  confidenceTier: string;
+  direction: ConfidenceDirection;
+  tradeZone: string;
+  adjustmentNotes: string[];
+  triggerStatus: string;
+  triggerType: string;
+  triggerLevelHint: string;
+  invalidationHint: string;
+  targetZoneHint: string;
+  extensionZoneHint: string;
+  momentumStatus: string;
+  marketProfile: string;
+  scannerSetupStrength: string;
+}
+
 interface SignalData {
   signal: 'BUY' | 'SELL' | 'NEUTRAL';
   confidence: number;
   alignment: AlignmentType;
   indicators: SignalIndicators;
   reasons: string[];
+  confidenceEngine?: ConfidenceEngineOutput;
 }
 
 interface SignalIndicatorProps {
@@ -86,6 +120,16 @@ const BIAS_LABELS: Record<FinalBias, string> = {
 
 function biasColor(b: FinalBias): string {
   return BIAS_COLORS[b] || '#90a4ae';
+}
+
+function directionColor(d: ConfidenceDirection): string {
+  if (d === 'Bullish') return '#00e676';
+  if (d === 'Bearish') return '#f44336';
+  return '#90a4ae';
+}
+
+function formatRangeState(s: string): string {
+  return s.replace(/_/g, ' ');
 }
 
 function scoreColor(v: number): string {
@@ -196,9 +240,26 @@ const SignalIndicator: React.FC<SignalIndicatorProps> = ({ symbol, expiry }) => 
 
   const ntZone = data ? isNTZ() : false;
   const bias: FinalBias = data?.indicators.finalBias || 'Neutral';
-  const bColor = ntZone ? '#ff9800' : biasColor(bias);
-  const confidence = data?.confidence || 20;
+  const ce = data?.confidenceEngine;
+  const rangeNoTrade = ce?.tradeZone === 'NO_TRADE_ZONE';
+  const displayDir = ce?.direction;
+  const bColor =
+    rangeNoTrade || ntZone
+      ? '#ff9800'
+      : displayDir
+        ? directionColor(displayDir)
+        : biasColor(bias);
+  const confidence = data?.confidence ?? 20;
   const alignment: AlignmentType = data?.alignment || 'Mixed';
+
+  const headerLabel =
+    rangeNoTrade
+      ? ' NO TRADE (RANGE)'
+      : ntZone
+        ? ' NO TRADE ZONE'
+        : displayDir
+          ? ` ${displayDir.toUpperCase()}`
+          : BIAS_LABELS[bias];
 
   if (loading) {
     return (
@@ -242,19 +303,30 @@ const SignalIndicator: React.FC<SignalIndicatorProps> = ({ symbol, expiry }) => 
           display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 140,
         }}>
           <Typography sx={{ color: bColor, fontWeight: 800, fontSize: '0.82rem', letterSpacing: 1 }}>
-            {ntZone ? ' NO TRADE ZONE' : BIAS_LABELS[bias]}
+            {headerLabel}
           </Typography>
         </Box>
 
         {/* Confidence bar */}
-        <Box sx={{ flex: 1, minWidth: 120, maxWidth: 200 }}>
+        <Box sx={{ flex: 1, minWidth: 120, maxWidth: 220 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.3 }}>
-            <Typography sx={{ fontSize: '0.65rem', color: '#78909c' }}>Confidence</Typography>
+            <Typography sx={{ fontSize: '0.65rem', color: '#78909c' }}>Confidence (adj.)</Typography>
             <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: bColor }}>{confidence}%</Typography>
           </Box>
+          {ce && (
+            <Typography sx={{ fontSize: '0.58rem', color: '#546e7a', mb: 0.3 }}>
+              Raw {ce.confidenceRaw}% (weighted baseline)
+              {ce.rangeState === 'DEEP_RANGE' &&
+              typeof ce.confidenceBeforeDeepRange === 'number' &&
+              ce.confidenceBeforeDeepRange !== ce.confidenceAdjusted
+                ? ` · before deep-range rule: ${ce.confidenceBeforeDeepRange}%`
+                : ''}
+              {' · '}{ce.confidenceTier} · {ce.pipelineOrder}
+            </Typography>
+          )}
           <LinearProgress
             variant="determinate"
-            value={confidence}
+            value={Math.min(100, Math.max(0, confidence))}
             sx={{
               height: 6, borderRadius: 3,
               backgroundColor: 'rgba(255,255,255,0.08)',
@@ -319,11 +391,96 @@ const SignalIndicator: React.FC<SignalIndicatorProps> = ({ symbol, expiry }) => 
         </IconButton>
       </Box>
 
+      {ce && (
+        <>
+          <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
+          <Box sx={{ px: 2, py: 1.25, bgcolor: 'rgba(0,0,0,0.15)' }}>
+            <Typography sx={{ fontSize: '0.62rem', color: '#7e8ffa', fontWeight: 800, letterSpacing: 1.2, mb: 0.8 }}>
+              TRADE STRUCTURE
+            </Typography>
+            <Typography sx={{ fontSize: '0.68rem', color: '#cfd8dc', fontFamily: 'monospace', lineHeight: 1.6 }}>
+              Trigger Status&nbsp;&nbsp;: {ce.triggerStatus}
+              <br />
+              Trigger Type&nbsp;&nbsp;&nbsp;&nbsp;: {ce.triggerType}
+              <br />
+              Trigger Level&nbsp;&nbsp;: {ce.triggerLevelHint}
+              <br />
+              Invalidation&nbsp;&nbsp;&nbsp;: {ce.invalidationHint}
+              <br />
+              Target Zone&nbsp;&nbsp;&nbsp;&nbsp;: {ce.targetZoneHint}
+              <br />
+              Extension Zone&nbsp;: {ce.extensionZoneHint}
+              <br />
+              Momentum Status: {ce.momentumStatus}
+            </Typography>
+            <Typography sx={{ fontSize: '0.62rem', color: '#546e7a', fontWeight: 700, letterSpacing: 1.2, mt: 1.2, mb: 0.5 }}>
+              MARKET OVERVIEW
+            </Typography>
+            <Typography sx={{ fontSize: '0.68rem', color: '#cfd8dc', fontFamily: 'monospace', lineHeight: 1.6 }}>
+              Selected Index&nbsp;&nbsp;&nbsp;: {symbol}
+              <br />
+              Profile&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: {ce.marketProfile}
+              <br />
+              Market State&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: {formatRangeState(ce.rangeState)}
+              <br />
+              Range Reliability : {ce.rangeReliability}
+              <br />
+              Confidence&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: {ce.confidenceAdjusted}% ({ce.confidenceTier}){ce.rangeState === 'DEEP_RANGE' && typeof ce.confidenceBeforeDeepRange === 'number' ? ` · was ${ce.confidenceBeforeDeepRange}% pre gate` : ''}
+              <br />
+              Bias&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: {ce.direction}
+              <br />
+              Momentum&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: {ce.momentumStatus}
+              <br />
+              Scanner Strength&nbsp;: {ce.scannerSetupStrength}
+            </Typography>
+            <Typography sx={{ fontSize: '0.58rem', color: '#546e7a', mt: 1, fontStyle: 'italic' }}>
+              General information only — not financial advice. Analytical context from live range + options data.
+            </Typography>
+          </Box>
+        </>
+      )}
+
       {/*  Expanded Panel  */}
       <Collapse in={expanded}>
         <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
 
         <Box sx={{ px: 2, py: 1.5 }}>
+
+          {ce && (
+            <>
+              <Typography sx={{ fontSize: '0.68rem', color: '#546e7a', fontWeight: 700, mb: 0.8, letterSpacing: 1 }}>
+                CONFIDENCE COMPONENTS (+1 / 0 / −1) & WEIGHTS
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1.5 }}>
+                {(['structure', 'oiFlow', 'gamma', 'momentum', 'alignment'] as const).map((k) => (
+                  <StatCell
+                    key={k}
+                    label={`${k} (${((ce.weightsUsed[k] ?? 0) * 100).toFixed(0)}%)`}
+                    value={`${ce.componentScores[k]}`}
+                    color={scoreColor(ce.componentScores[k])}
+                  />
+                ))}
+                <StatCell label="Overlap %" value={`${ce.overlapPercent}%`} color="#90caf9" />
+              </Box>
+              <Typography sx={{ fontSize: '0.65rem', color: '#78909c', mb: 1 }}>
+                Adjustments: {ce.adjustmentNotes.length ? ce.adjustmentNotes.join(' · ') : 'None'}
+              </Typography>
+              <Typography sx={{ fontSize: '0.6rem', color: '#607d8b', mb: 1, lineHeight: 1.45 }}>
+                Discrete buckets use −1/0/+1 (OI Δ needs prior snapshot — 0% until history builds).
+                Legacy “Strong” alignment = same bias on 3m/5m/15m (e.g. all Neutral); discrete alignment
+                needs all three price trends UP or all DOWN.
+              </Typography>
+              <Typography sx={{ fontSize: '0.68rem', color: '#546e7a', fontWeight: 700, mb: 0.8, letterSpacing: 1 }}>
+                RISK MANAGEMENT (CONTEXT)
+              </Typography>
+              <Typography sx={{ fontSize: '0.65rem', color: '#b0bec5', lineHeight: 1.5, mb: 1.5 }}>
+                Support / resistance: use combined ATR–EM band edges and session VWAP proxy as indicative zones only.
+                Profit logic: scale near opposing structure; on momentum slowdown treat as caution.
+                Trailing: strong momentum → hold context; weakening → partial reduction; reversal → defensive.
+              </Typography>
+              <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)', mb: 1.2 }} />
+            </>
+          )}
 
           {/*  Score Breakdown bars  */}
           <Typography sx={{ fontSize: '0.68rem', color: '#546e7a', fontWeight: 700, mb: 0.8, letterSpacing: 1 }}>

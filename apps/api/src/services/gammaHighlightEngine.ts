@@ -3,8 +3,8 @@
  *
  * Fixes applied per spec documents:
  *   1. GammaExposure = Gamma × OI × LotSize × SpotPrice (was missing ×SpotPrice)
- *   2. Gamma Wall threshold → 0.95 (was 0.90)
- *   3. Gamma Flip + Zero Gamma → merged as "Gamma Pivot" (single label)
+ *   2. High OI Zone threshold → 0.95 (was 0.90)
+ *   3. Gamma Flip + Zero Gamma → merged as "Neutral Options Zone" (single label)
  *   4. Cluster category → hidden (removed from display, used only internally)
  *   5. Top-3 limit on gamma highlights per chain
  *   6. Distance filter: only highlight strikes within ±3% of spot
@@ -13,7 +13,7 @@
  *   Module 1 — Cell Background Highlight (OI / Volume Ranking, top-2 with duplicate handling)
  *   Module 2 — OI Shift Detection (Build / Unwind via snapshot cache, absolute thresholds)
  *   Module 3 — Volume Shift Detection (Rolling average ratio ≥ 2)
- *   + Gamma Highlights (Wall / Pivot — no Cluster in display)
+ *   + Gamma Highlights (High OI Zone / Neutral Options Zone — no Cluster in display)
  *
  * All data from real Dhan APIs — no dummy data.
  */
@@ -36,9 +36,9 @@ export const INDEX_CONFIG: Record<string, {
 // ── Types ──────────────────────────────────────────────────
 
 export type GammaHighlightType =
-  | 'Gamma Wall CALL'
-  | 'Gamma Wall PUT'
-  | 'Gamma Pivot'      // Merged: was Gamma Flip + Zero Gamma
+  | 'High OI Zone CALL'
+  | 'High OI Zone PUT'
+  | 'Neutral Options Zone'      // Merged: was Gamma Flip + Zero Gamma
   | '';                 // Clusters are hidden (internal use only)
 
 export interface StrikeHighlight {
@@ -159,7 +159,7 @@ export function computeHighlights(
   const zeroGammaThreshold = 0.05 * maxNetGamma;
 
   // ── Steps 7–10: Assign highlights per strike ──
-  // Priority: 1. Gamma Wall → 2. Gamma Pivot (Flip+Zero merged)
+  // Priority: 1. High OI Zone → 2. Neutral Options Zone (Flip+Zero merged)
   // FIX: Cluster removed from display, Wall threshold → 0.95
   // FIX: Distance filter — only within ±3% of spot
   // FIX: Top-3 limit on total highlights
@@ -184,29 +184,29 @@ export function computeHighlights(
       continue;
     }
 
-    // ── Priority 1: Gamma Wall (ratio ≥ 0.95) — FIX: was 0.90 ──
+    // ── Priority 1: High OI Zone (ratio ≥ 0.95) — FIX: was 0.90 ──
     if (g.ceRatio >= 0.95 && g.peRatio >= 0.95) {
-      highlight = g.ceRatio > g.peRatio ? 'Gamma Wall CALL' : 'Gamma Wall PUT';
+      highlight = g.ceRatio > g.peRatio ? 'High OI Zone CALL' : 'High OI Zone PUT';
     } else if (g.ceRatio >= 0.95) {
-      highlight = 'Gamma Wall CALL';
+      highlight = 'High OI Zone CALL';
     } else if (g.peRatio >= 0.95) {
-      highlight = 'Gamma Wall PUT';
+      highlight = 'High OI Zone PUT';
     }
 
-    // ── Priority 2: Gamma Pivot (merged Flip + Zero) ──
+    // ── Priority 2: Neutral Options Zone (merged Flip + Zero) ──
     if (!highlight) {
       // Flip: NetGamma sign change between consecutive strikes
       if (i > 0) {
         const prevNet = gammaData[i - 1].netGamma;
         const currNet = g.netGamma;
         if ((prevNet * currNet) < 0) {
-          highlight = 'Gamma Pivot';
+          highlight = 'Neutral Options Zone';
         }
       }
 
       // Zero: |NetGamma| ≤ threshold
       if (!highlight && maxNetGamma > 0 && Math.abs(g.netGamma) <= zeroGammaThreshold) {
-        highlight = 'Gamma Pivot';
+        highlight = 'Neutral Options Zone';
       }
     }
 

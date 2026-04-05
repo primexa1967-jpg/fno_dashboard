@@ -1,6 +1,6 @@
 import { Box, Container, Paper, TextField, Button, Typography, Link } from '@mui/material';
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { authApi } from '../api/auth';
 import { useAuthStore } from '../store/authStore';
 
@@ -99,10 +99,21 @@ export default function LoginPage() {
               {loading ? 'Logging in...' : 'Login'}
             </Button>
 
-            <Box sx={{ textAlign: 'center' }}>
+            <Box sx={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 1 }}>
               <Link href="#" variant="body2">
                 Download App
               </Link>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 1, columnGap: 2 }}>
+                <Link component={RouterLink} to="/privacy-policy" variant="body2" underline="hover">
+                  Privacy Policy
+                </Link>
+                <Typography component="span" variant="body2" color="text.secondary">
+                  ·
+                </Typography>
+                <Link component={RouterLink} to="/terms" variant="body2" underline="hover">
+                  Terms &amp; Conditions
+                </Link>
+              </Box>
             </Box>
           </form>
         </Paper>

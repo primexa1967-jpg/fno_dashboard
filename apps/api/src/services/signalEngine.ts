@@ -9,6 +9,9 @@
  */
 
 import { getDhanStream } from './dhanClient';
+import { marketRangeService } from './marketRangeService';
+import { scannerEngine } from './scannerEngine';
+import { buildConfidenceEngineOutput, type ConfidenceEngineOutput } from './confidenceEngine';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Public interfaces
@@ -66,10 +69,13 @@ export interface SignalIndicators {
 export interface SignalResult {
   // Legacy fields kept for backward-compat with frontend chips
   signal: 'BUY' | 'SELL' | 'NEUTRAL';
-  confidence: number;           // 20-85
+  /** Final adjusted confidence % (0–100) after Range → Confidence pipeline */
+  confidence: number;
   alignment: AlignmentType;
   indicators: SignalIndicators;
   reasons: string[];
+  /** Range-first confidence engine output (omitted when chain cache missing) */
+  confidenceEngine?: ConfidenceEngineOutput;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -415,9 +421,26 @@ class SignalEngineService {
         ? volumeHistory[upperSymbol].slice(0, -1).reduce((a, b) => a + b, 0) /
           (volumeHistory[upperSymbol].length - 1)
         : 0;
-      const volumeChangePct = volAvg20 > 0
+      let volumeChangePct = volAvg20 > 0
         ? ((totalCEVol + totalPEVol - volAvg20) / volAvg20) * 100
         : volumeChange;
+
+      // Rolling poll average can spike ±100% early in the session; prefer snap-to-snap vs prior snapshot when unstable.
+      if (prevSnap) {
+        const prevVolTick = prevSnap.totalCEVolume + prevSnap.totalPEVolume;
+        const curVolTick = totalCEVol + totalPEVol;
+        const histLen = volumeHistory[upperSymbol].length;
+        const snapPct =
+          prevVolTick > 0 ? ((curVolTick - prevVolTick) / prevVolTick) * 100 : 0;
+        if (
+          histLen < 8 ||
+          (Number.isFinite(volumeChangePct) && Math.abs(volumeChangePct) > 80)
+        ) {
+          if (Number.isFinite(snapPct)) {
+            volumeChangePct = snapPct;
+          }
+        }
+      }
 
       // ── CONDITION 1: Structure (OI + gamma + PCR + clusters) ─────────────
       const { callCluster, putCluster } = calcClusters(rows, spotPrice, upperSymbol);
@@ -488,14 +511,58 @@ class SignalEngineService {
       const ivScore15m       = calcIVScore(priceChange, ivChange15m);
       const momentumScore15m = calcMomentumScore(vwapScore15m, ivScore15m, volumeChangePct);
 
-      // ── CONDITION 6: Confidence ──────────────────────────────────────────
-      const confidence = calcConfidence(
+      // ── CONDITION 6: Legacy confidence (fallback if range engine unavailable)
+      const legacyConfidence = calcConfidence(
         finalScore, ivChange15m, volumeChange15m,
         momentumScore15m, bias3m, bias5m, bias15m
       );
 
       // ── CONDITION 7: Alignment ───────────────────────────────────────────
       const alignment = calcAlignment(bias3m, bias5m, bias15m);
+
+      // ── Range → Confidence engine (live range + scanner + IV) ────────────
+      let confidenceEngineOut: ConfidenceEngineOutput | undefined;
+      let confidence = legacyConfidence;
+      try {
+        const dhanClient = getDhanStream();
+        const [rangeData, ivPack, scanRes] = await Promise.all([
+          marketRangeService.getIndexRangeData(upperSymbol),
+          dhanClient.getIVData(upperSymbol).catch(() => null),
+          scannerEngine.scanIndex(upperSymbol).catch(() => null),
+        ]);
+        const indiaVIX =
+          ivPack && typeof ivPack.iv === 'number' && ivPack.iv > 0
+            ? Number(ivPack.iv)
+            : avgIV > 0
+              ? Number(avgIV)
+              : 0;
+        const scannerHasSetup = !!(scanRes && scanRes.signal && scanRes.signal !== 'NO TRADE');
+        const totalOiChgAbsPct =
+          (Math.abs(oiChangeCE) + Math.abs(oiChangePE)) / 2;
+
+        confidenceEngineOut = buildConfidenceEngineOutput({
+          symbol: upperSymbol,
+          spotPrice,
+          rangeData,
+          structurePCR,
+          structureCluster,
+          structureGamma,
+          oiChangeCE,
+          oiChangePE,
+          vwapScore,
+          volumeChangePct,
+          trend3m,
+          trend5m,
+          trend15m,
+          indiaVIX: indiaVIX > 0 ? indiaVIX : 15,
+          totalOiChgAbsPct,
+          scannerHasSetup,
+          oiHistoryReady: !!prevSnap,
+        });
+        confidence = clamp(confidenceEngineOut.confidenceAdjusted, 0, 100);
+      } catch (ceErr) {
+        console.warn('Confidence engine v2 skipped:', ceErr);
+      }
 
       // ── Build reasons ────────────────────────────────────────────────────
       const reasons: string[] = [];
@@ -514,6 +581,12 @@ class SignalEngineService {
       if (volumeChangePct > 8) reasons.push(`Volume surge ${volumeChangePct.toFixed(0)}% → Momentum amplified`);
       if (alignment === 'Strong') reasons.push(`All timeframes aligned: ${finalBias}`);
       reasons.push(`Confidence: ${confidence}% | Alignment: ${alignment}`);
+      if (confidenceEngineOut) {
+        reasons.push(
+          `Range: ${confidenceEngineOut.rangeState.replace(/_/g, ' ')} | Reliability: ${confidenceEngineOut.rangeReliability} | Dir: ${confidenceEngineOut.direction}`,
+        );
+        confidenceEngineOut.adjustmentNotes.forEach(n => reasons.push(n));
+      }
 
       // Legacy signal field (for backward compat)
       const signal: 'BUY' | 'SELL' | 'NEUTRAL' =
@@ -565,7 +638,7 @@ class SignalEngineService {
         timestamp: new Date().toISOString(),
       };
 
-      return { signal, confidence, alignment, indicators, reasons };
+      return { signal, confidence, alignment, indicators, reasons, confidenceEngine: confidenceEngineOut };
 
     } catch (error) {
       console.error('Error calculating signal:', error);
@@ -644,6 +717,7 @@ class SignalEngineService {
       alignment: 'Mixed',
       indicators: defaultIndicators,
       reasons: ['Awaiting option chain data…'],
+      confidenceEngine: undefined,
     };
   }
 }

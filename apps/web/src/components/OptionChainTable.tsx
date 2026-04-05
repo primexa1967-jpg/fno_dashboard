@@ -11,12 +11,17 @@ interface OptionChainTableProps {
 
 // ── Highlight colour map ──────────────────────────────────
 const HIGHLIGHT_COLORS: Record<string, string> = {
-  'Gamma Wall CALL':      '#8A2BE2',   // BlueViolet (138, 43, 226)
-  'Gamma Wall PUT':       '#FF8C00',   // DarkOrange (255, 140, 0)
-  'Gamma Flip':           '#FF00FF',   // Magenta (255, 0, 255)
-  'Zero Gamma':           '#FF69B4',   // HotPink (255, 105, 180)
-  'Call Gamma Cluster':   '#9370DB',   // MediumPurple (147, 112, 219)
-  'Put Gamma Cluster':    '#FFC107',   // Amber (255, 193, 7)
+  'High OI Zone CALL':    '#8A2BE2',   // BlueViolet (138, 43, 226)
+  'High OI Zone PUT':     '#FF8C00',   // DarkOrange (255, 140, 0)
+  'Neutral Options Zone': '#FF00FF',   // Magenta (same accent as legacy flip)
+  // Legacy labels (cached responses / older API)
+  'Gamma Wall CALL':      '#8A2BE2',
+  'Gamma Wall PUT':       '#FF8C00',
+  'Gamma Pivot':          '#FF00FF',
+  'Gamma Flip':           '#FF00FF',
+  'Zero Gamma':           '#FF69B4',
+  'Call Gamma Cluster':   '#9370DB',
+  'Put Gamma Cluster':    '#FFC107',
 };
 
 // Module 1: OI rank background (top-2 only per spec)
@@ -147,10 +152,10 @@ export default function OptionChainTable({
 
   const getBuiltUpColor = (builtUp: string): string => {
     const n = builtUp.toLowerCase().replace(/\s+/g, ' ').trim();
-    if (n.includes('long build') || n.includes('long built')) return '#4caf50';
-    if (n.includes('short cover')) return '#4caf50';
-    if (n.includes('short build') || n.includes('short built')) return '#f44336';
-    if (n.includes('long unwind')) return '#f44336';
+    if (n.includes('call oi increase') || n.includes('long build') || n.includes('long built')) return '#2e7d32';
+    if (n.includes('buy back') || n.includes('short cover')) return '#81c784';
+    if (n.includes('put oi increase') || n.includes('short build') || n.includes('short built')) return '#c62828';
+    if (n.includes('profit booking') || n.includes('long unwind') || n.includes('unwinding')) return '#ef9a9a';
     return 'transparent';
   };
 
@@ -188,14 +193,14 @@ export default function OptionChainTable({
 
   const computeBuiltUp = (chg: number, oiChg: number, apiBuiltUp: string): string => {
     if (apiBuiltUp && apiBuiltUp.length > 2 && apiBuiltUp !== '-') return apiBuiltUp;
-    if (apiBuiltUp === 'LB') return 'Long Build Up';
-    if (apiBuiltUp === 'SB') return 'Short Build Up';
-    if (apiBuiltUp === 'SC') return 'Short Cover';
-    if (apiBuiltUp === 'LU') return 'Long Unwinding';
-    if (chg > 0 && oiChg > 0) return 'Long Build Up';
-    if (chg < 0 && oiChg > 0) return 'Short Build Up';
-    if (chg > 0 && oiChg < 0) return 'Short Cover';
-    if (chg < 0 && oiChg < 0) return 'Long Unwinding';
+    if (apiBuiltUp === 'LB') return 'Call OI Increase';
+    if (apiBuiltUp === 'SB') return 'Put OI Increase';
+    if (apiBuiltUp === 'SC') return 'buy back';
+    if (apiBuiltUp === 'LU') return 'profit booking';
+    if (chg > 0 && oiChg > 0) return 'Call OI Increase';
+    if (chg < 0 && oiChg > 0) return 'Put OI Increase';
+    if (chg > 0 && oiChg < 0) return 'buy back';
+    if (chg < 0 && oiChg < 0) return 'profit booking';
     return '-';
   };
 

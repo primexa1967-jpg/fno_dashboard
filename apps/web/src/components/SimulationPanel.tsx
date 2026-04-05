@@ -67,6 +67,106 @@ interface PerfMetrics {
   streakLoss: number;
 }
 
+/** API may return riskEngine shape (accountBalance, dailyPnl) or legacy UI shape */
+function normalizeAccount(raw: Record<string, unknown> | null | undefined): SimAccount | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const num = (v: unknown, fallback = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
+  return {
+    initialCapital: num(r.initialCapital),
+    currentCapital: num(r.accountBalance, num(r.currentCapital)),
+    lockedCapital: num(r.usedCapital, num(r.lockedCapital)),
+    availableCapital: num(r.availableCapital),
+    totalPnl: num(r.totalPnl),
+    dayPnl: num(r.dailyPnl, num(r.dayPnl)),
+    isLocked: Boolean(r.isLocked),
+    mode: String(r.mode ?? 'SIMULATION'),
+  };
+}
+
+function normalizeOpenTrade(t: Record<string, unknown>): SimTrade {
+  const num = (v: unknown, fallback = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
+  const entry = num(t.entryPrice);
+  const cur = num(t.currentPrice, entry);
+  const pnl = num(t.unrealizedPnl, num(t.pnl));
+  const sym = String(t.symbol ?? '');
+  const strike = num(t.strike);
+  const opt = String(t.optionType ?? '');
+  const dir = String(t.optionType ?? t.direction ?? '');
+  return {
+    id: String(t.tradeId ?? t.id ?? ''),
+    instrument: strike ? `${sym} ${strike}${opt}` : sym || '—',
+    direction: dir,
+    qty: num(t.quantity, num(t.qty)),
+    entryPrice: entry,
+    currentPrice: cur,
+    stopLoss: num(t.stopLoss),
+    target: num(t.target),
+    pnl,
+    pnlPercent: entry > 0 ? ((cur - entry) / entry) * 100 : 0,
+    status: String(t.status ?? ''),
+    entryTime: typeof t.entryTime === 'number' ? new Date(t.entryTime).toISOString() : String(t.entryTime ?? ''),
+    exitTime: t.exitTime != null ? new Date(t.exitTime as number).toISOString() : undefined,
+    exitReason: t.exitReason != null ? String(t.exitReason) : undefined,
+  };
+}
+
+function normalizeClosedTrade(t: Record<string, unknown>): SimTrade {
+  const num = (v: unknown, fallback = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
+  const sym = String(t.symbol ?? '');
+  const strike = num(t.strike);
+  const opt = String(t.optionType ?? '');
+  const pnl = num(t.realizedPnl, num(t.pnl));
+  return {
+    id: String(t.tradeId ?? t.id ?? ''),
+    instrument: strike ? `${sym} ${strike}${opt}` : sym || '—',
+    direction: String(t.optionType ?? t.direction ?? ''),
+    qty: num(t.quantity, num(t.qty)),
+    entryPrice: num(t.entryPrice),
+    currentPrice: num(t.exitPrice, num(t.currentPrice)),
+    stopLoss: num(t.stopLoss),
+    target: num(t.target),
+    pnl,
+    pnlPercent: 0,
+    status: String(t.status ?? 'CLOSED'),
+    entryTime: typeof t.entryTime === 'number' ? new Date(t.entryTime).toISOString() : '',
+    exitTime: t.exitTime != null ? new Date(t.exitTime as number).toISOString() : undefined,
+    exitReason: t.exitReason != null ? String(t.exitReason) : undefined,
+  };
+}
+
+/** Backend PerformanceMetrics vs UI PerfMetrics */
+function normalizePerformance(raw: Record<string, unknown> | null | undefined): PerfMetrics | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const num = (v: unknown, fallback = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
+  const winRateRaw = num(r.winRate);
+  const winRate01 = winRateRaw > 1 ? winRateRaw / 100 : winRateRaw;
+  return {
+    totalTrades: num(r.totalTrades),
+    winRate: winRate01,
+    avgWin: num(r.avgWin, num(r.avgProfit)),
+    avgLoss: num(r.avgLoss),
+    profitFactor: num(r.profitFactor, 0),
+    maxDrawdown: num(r.maxDrawdown),
+    sharpeRatio: num(r.sharpeRatio, 0),
+    avgHoldTime: String(r.avgHoldTime ?? '—'),
+    bestTrade: num(r.bestTrade),
+    worstTrade: num(r.worstTrade),
+    streakWin: num(r.streakWin, num(r.wins)),
+    streakLoss: num(r.streakLoss, num(r.losses)),
+  };
+}
+
+function normalizeRejection(raw: Record<string, unknown>): Rejection {
+  return {
+    timestamp: typeof raw.timestamp === 'number' ? new Date(raw.timestamp).toISOString() : String(raw.timestamp ?? ''),
+    instrument: String(raw.instrument ?? raw.module ?? '—'),
+    stage: String(raw.stage ?? raw.module ?? '—'),
+    reason: String(raw.reason ?? ''),
+  };
+}
+
 const PNL_GREEN = '#4caf50';
 const PNL_RED = '#f44336';
 
@@ -90,36 +190,60 @@ const SimulationPanel: React.FC = () => {
   const fetchAccount = useCallback(async () => {
     try {
       const r = await apiClient.get('/engine/simulation/account');
-      if (r.data?.success) setAccount(r.data.data);
+      if (r.data?.success) setAccount(normalizeAccount(r.data.data));
     } catch { /* noop */ }
   }, []);
 
   const fetchOpen = useCallback(async () => {
     try {
       const r = await apiClient.get('/engine/simulation/trades/open');
-      if (r.data?.success) setOpenTrades(r.data.data);
+      if (r.data?.success && Array.isArray(r.data.data)) {
+        setOpenTrades(r.data.data.map((x: unknown) => normalizeOpenTrade(x as Record<string, unknown>)));
+      }
     } catch { /* noop */ }
   }, []);
 
   const fetchHistory = useCallback(async () => {
     try {
       const r = await apiClient.get('/engine/simulation/trades/history');
-      if (r.data?.success) setHistory(r.data.data);
+      if (r.data?.success && Array.isArray(r.data.data)) {
+        setHistory(r.data.data.map((x: unknown) => normalizeClosedTrade(x as Record<string, unknown>)));
+      }
     } catch { /* noop */ }
   }, []);
 
   const fetchRejections = useCallback(async () => {
     try {
       const r = await apiClient.get('/engine/simulation/rejections');
-      if (r.data?.success) setRejections(r.data.data);
+      if (r.data?.success && Array.isArray(r.data.data)) {
+        setRejections(r.data.data.map((x: unknown) => normalizeRejection(x as Record<string, unknown>)));
+      }
     } catch { /* noop */ }
   }, []);
 
   const fetchPerformance = useCallback(async () => {
     try {
       const r = await apiClient.get('/engine/simulation/performance');
-      if (r.data?.success) setPerformance(r.data.data);
+      if (r.data?.success) setPerformance(normalizePerformance(r.data.data));
     } catch { /* noop */ }
+  }, []);
+
+  // Admins can read simulation without PIN — try once on mount
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await apiClient.get('/engine/simulation/account');
+        if (!cancelled && r.data?.success && r.data.data) {
+          setUnlocked(true);
+        }
+      } catch {
+        /* non-admin: show PIN flow */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Auto-refresh every 5s when unlocked
@@ -164,9 +288,21 @@ const SimulationPanel: React.FC = () => {
 
   // ─── Helpers ───────────────────────────────────
 
-  const pnlColor = (v: number) => (v >= 0 ? PNL_GREEN : PNL_RED);
-  const fmtK = (v: number) => `₹${(v / 1000).toFixed(1)}K`;
-  const fmtPnl = (v: number) => `${v >= 0 ? '+' : ''}₹${v.toFixed(0)}`;
+  const pnlColor = (v: number | undefined | null) => ((v ?? 0) >= 0 ? PNL_GREEN : PNL_RED);
+  const fmtK = (v: number | undefined | null) => {
+    const n = Number(v);
+    const safe = Number.isFinite(n) ? n : 0;
+    return `₹${(safe / 1000).toFixed(1)}K`;
+  };
+  const fmtPnl = (v: number | undefined | null) => {
+    const n = Number(v);
+    const safe = Number.isFinite(n) ? n : 0;
+    return `${safe >= 0 ? '+' : ''}₹${safe.toFixed(0)}`;
+  };
+  const fmtNum = (v: number | undefined | null, digits = 1) => {
+    const n = Number(v);
+    return (Number.isFinite(n) ? n : 0).toFixed(digits);
+  };
 
   // ─── PIN Dialog ────────────────────────────────
 
@@ -295,11 +431,11 @@ const SimulationPanel: React.FC = () => {
                     <TableCell sx={{ color: '#fff', fontSize: '0.6rem', py: 0.3, px: 0.5, borderColor: '#333' }}>{t.instrument}</TableCell>
                     <TableCell sx={{ color: t.direction === 'CE' ? PNL_GREEN : PNL_RED, fontSize: '0.6rem', py: 0.3, px: 0.5, borderColor: '#333', fontWeight: 700 }}>{t.direction}</TableCell>
                     <TableCell sx={{ color: '#fff', fontSize: '0.6rem', py: 0.3, px: 0.5, borderColor: '#333' }}>{t.qty}</TableCell>
-                    <TableCell sx={{ color: '#fff', fontSize: '0.6rem', py: 0.3, px: 0.5, borderColor: '#333' }}>{t.entryPrice.toFixed(1)}</TableCell>
-                    <TableCell sx={{ color: '#fff', fontSize: '0.6rem', py: 0.3, px: 0.5, borderColor: '#333' }}>{t.currentPrice.toFixed(1)}</TableCell>
+                    <TableCell sx={{ color: '#fff', fontSize: '0.6rem', py: 0.3, px: 0.5, borderColor: '#333' }}>{fmtNum(t.entryPrice)}</TableCell>
+                    <TableCell sx={{ color: '#fff', fontSize: '0.6rem', py: 0.3, px: 0.5, borderColor: '#333' }}>{fmtNum(t.currentPrice)}</TableCell>
                     <TableCell sx={{ color: pnlColor(t.pnl), fontSize: '0.6rem', py: 0.3, px: 0.5, borderColor: '#333', fontWeight: 700 }}>{fmtPnl(t.pnl)}</TableCell>
-                    <TableCell sx={{ color: '#f44336', fontSize: '0.6rem', py: 0.3, px: 0.5, borderColor: '#333' }}>{t.stopLoss.toFixed(1)}</TableCell>
-                    <TableCell sx={{ color: PNL_GREEN, fontSize: '0.6rem', py: 0.3, px: 0.5, borderColor: '#333' }}>{t.target.toFixed(1)}</TableCell>
+                    <TableCell sx={{ color: '#f44336', fontSize: '0.6rem', py: 0.3, px: 0.5, borderColor: '#333' }}>{fmtNum(t.stopLoss)}</TableCell>
+                    <TableCell sx={{ color: PNL_GREEN, fontSize: '0.6rem', py: 0.3, px: 0.5, borderColor: '#333' }}>{fmtNum(t.target)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -367,9 +503,9 @@ const SimulationPanel: React.FC = () => {
               { label: 'Win Rate', value: `${(performance.winRate * 100).toFixed(1)}%`, color: performance.winRate >= 0.5 ? PNL_GREEN : PNL_RED },
               { label: 'Avg Win', value: fmtPnl(performance.avgWin), color: PNL_GREEN },
               { label: 'Avg Loss', value: fmtPnl(performance.avgLoss), color: PNL_RED },
-              { label: 'Profit Factor', value: performance.profitFactor.toFixed(2), color: performance.profitFactor >= 1 ? PNL_GREEN : PNL_RED },
-              { label: 'Max Drawdown', value: `${(performance.maxDrawdown * 100).toFixed(1)}%`, color: PNL_RED },
-              { label: 'Sharpe Ratio', value: performance.sharpeRatio.toFixed(2), color: '#90caf9' },
+              { label: 'Profit Factor', value: fmtNum(performance.profitFactor, 2), color: performance.profitFactor >= 1 ? PNL_GREEN : PNL_RED },
+              { label: 'Max Drawdown', value: fmtPnl(performance.maxDrawdown), color: PNL_RED },
+              { label: 'Sharpe Ratio', value: fmtNum(performance.sharpeRatio, 2), color: '#90caf9' },
               { label: 'Avg Hold', value: performance.avgHoldTime, color: '#fff' },
               { label: 'Best Trade', value: fmtPnl(performance.bestTrade), color: PNL_GREEN },
               { label: 'Worst Trade', value: fmtPnl(performance.worstTrade), color: PNL_RED },

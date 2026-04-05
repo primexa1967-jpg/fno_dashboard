@@ -17,10 +17,10 @@ const DEFAULT_CONFIG: BuiltUpConfig = {
  * Classify option built-up based on price and OI changes
  * 
  * Rules:
- * - Price ↑ & OI ↑ → Long Built Up
- * - Price ↑ & OI ↓ → Short Cover
- * - Price ↓ & OI ↑ → Short Built Up
- * - Price ↓ & OI ↓ → Long Unwind
+ * - Price ↑ & OI ↑ → Call OI Increase
+ * - Price ↑ & OI ↓ → buy back
+ * - Price ↓ & OI ↑ → Put OI Increase
+ * - Price ↓ & OI ↓ → profit booking
  * 
  * @param ltpChange - Change in Last Traded Price (percentage)
  * @param oiChange - Change in Open Interest (percentage)
@@ -46,13 +46,13 @@ export function classifyBuiltUp(
   const oiUp = oiChange > 0;
   
   if (priceUp && oiUp) {
-    return 'Long Built Up';
+    return 'Call OI Increase';
   } else if (priceUp && !oiUp) {
-    return 'Short Cover';
+    return 'buy back';
   } else if (!priceUp && oiUp) {
-    return 'Short Built Up';
+    return 'Put OI Increase';
   } else {
-    return 'Long Unwind';
+    return 'profit booking';
   }
 }
 
@@ -64,13 +64,13 @@ export function getBuiltUpStyle(builtUp: BuiltUpType | null): {
   backgroundColor: string;
 } {
   switch (builtUp) {
-    case 'Long Built Up':
+    case 'Call OI Increase':
       return { color: '#fff', backgroundColor: '#2e7d32' }; // Dark green
-    case 'Short Cover':
+    case 'buy back':
       return { color: '#000', backgroundColor: '#81c784' }; // Light green
-    case 'Short Built Up':
+    case 'Put OI Increase':
       return { color: '#fff', backgroundColor: '#c62828' }; // Dark red
-    case 'Long Unwind':
+    case 'profit booking':
       return { color: '#000', backgroundColor: '#ef9a9a' }; // Light red
     default:
       return { color: '#000', backgroundColor: 'transparent' };

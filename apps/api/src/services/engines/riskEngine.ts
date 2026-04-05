@@ -18,7 +18,7 @@ import { configManager } from './configManager';
 //  INTERNAL STATE
 // ─────────────────────────────────────────────────────────────
 
-interface RiskState {
+export interface RiskState {
   accountBalance: number;
   availableCapital: number;
   usedCapital: number;
@@ -303,6 +303,24 @@ class RiskEngine {
     if (this.state.totalOpenPositions >= cfg.maxTotalPositions) return false;
     if (this.state.usedCapital / this.state.accountBalance >= cfg.maxCapitalExposure) return false;
     return true;
+  }
+
+  /** Serializable snapshot for disk persistence */
+  exportStateSnapshot(): {
+    state: RiskState;
+    symbolConsecutiveLosses: [string, number][];
+  } {
+    return {
+      state: { ...this.state },
+      symbolConsecutiveLosses: Array.from(this.symbolConsecutiveLosses.entries()),
+    };
+  }
+
+  /** Restore from persistence (e.g. after API restart) */
+  importStateSnapshot(data: { state: RiskState; symbolConsecutiveLosses?: [string, number][] } | null): void {
+    if (!data?.state) return;
+    this.state = { ...data.state };
+    this.symbolConsecutiveLosses = new Map(data.symbolConsecutiveLosses || []);
   }
 }
 

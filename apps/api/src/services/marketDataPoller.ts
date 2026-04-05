@@ -22,6 +22,7 @@ import {
   calculateImpliedVolatility,
   getTimeToExpiry,
 } from '../utils/optionsPricing';
+import { healthEngine } from './engines/healthEngine';
 
 interface PollerConfig {
   symbol: string;
@@ -78,6 +79,7 @@ class MarketDataPoller {
    * Fetch data from Dhan API and broadcast via WebSocket
    */
   private async fetchAndBroadcast(symbol: string, expiry: string): Promise<void> {
+    const t0 = Date.now();
     try {
       const upperSymbol = symbol.toUpperCase();
       const dhanClient = getDhanStream();
@@ -122,6 +124,7 @@ class MarketDataPoller {
         }
       } catch (error) {
         console.error(`❌ Dhan API failed for ${upperSymbol}:`, error);
+        healthEngine.recordApiCall(Date.now() - t0, false);
         return; // Skip this poll cycle - no mock data
       }
 
@@ -259,7 +262,13 @@ class MarketDataPoller {
       const channel = `option-chain:${upperSymbol}:${expiry}`;
       websocketService.broadcast(channel, broadcastData);
 
+      const latency = Date.now() - t0;
+      healthEngine.recordTick();
+      healthEngine.recordApiCall(latency, true);
+      healthEngine.recordCacheUpdate();
+      healthEngine.recordDataQuality(true, isRealData ? 1 : 0.85);
     } catch (error) {
+      healthEngine.recordApiCall(Date.now() - t0, false);
       console.error(`❌ Error fetching market data for ${symbol} ${expiry}:`, error);
     }
   }

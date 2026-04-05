@@ -8,6 +8,8 @@ import RangePage from './pages/RangePage';
 import StockDashboardPage from './pages/StockDashboardPage';
 import ScannerExitPage from './pages/ScannerExitPage';
 import EngineDashboardPage from './pages/EngineDashboardPage';
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
+import TermsAndConditionsPage from './pages/TermsAndConditionsPage';
 
 function App() {
   const { isAuthenticated, user } = useAuthStore();
@@ -18,7 +20,10 @@ function App() {
         path="/login"
         element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />}
       />
-      
+
+      <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+      <Route path="/terms" element={<TermsAndConditionsPage />} />
+
       <Route
         path="/dashboard"
         element={isAuthenticated ? <DashboardPage /> : <Navigate to="/login" replace />}

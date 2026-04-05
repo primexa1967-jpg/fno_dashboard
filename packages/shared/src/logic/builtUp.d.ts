@@ -10,10 +10,10 @@ export interface BuiltUpConfig {
  * Classify option built-up based on price and OI changes
  *
  * Rules:
- * - Price ↑ & OI ↑ → Long Built Up
- * - Price ↑ & OI ↓ → Short Cover
- * - Price ↓ & OI ↑ → Short Built Up
- * - Price ↓ & OI ↓ → Long Unwind
+ * - Price ↑ & OI ↑ → Call OI Increase
+ * - Price ↑ & OI ↓ → buy back
+ * - Price ↓ & OI ↑ → Put OI Increase
+ * - Price ↓ & OI ↓ → profit booking
  *
  * @param ltpChange - Change in Last Traded Price (percentage)
  * @param oiChange - Change in Open Interest (percentage)
